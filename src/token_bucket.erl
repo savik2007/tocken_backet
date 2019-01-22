@@ -27,7 +27,7 @@
 
 -define(DEFAULT_RPS, 2000).
 
--record(raterlimiter, {cleanup_rate, timeout}).
+-record(remove_old, {cleanup_rate, timeout}).
 -record(state, {number_of_tokens, max_tokens}).
 
 %%%===================================================================
@@ -39,32 +39,29 @@ limit_is_reached(UserId) ->
 
 -spec(token_bucket:limit_is_reached(UserId :: term(), MaxRPS :: non_neg_integer()) -> true | false).
 limit_is_reached(UserId, MaxRPS) ->
-  Stamp = timestamp(),    %% milliseconds
-  case mnesia_driver:select_last() of
-    empty ->
-      mnesia_driver:add_user(UserId, Stamp),
-      true;
-    {other, Other} ->
-      io:format("~nError: ~n~p~n", [Other]),
-      false;
-    LastInsert ->
-      io:format("~nLastInsert: ~n~p~n", [LastInsert]),
-      case MaxRPS < (Stamp - LastInsert) of
-        true ->
-          mnesia_driver:add_user(UserId, Stamp),
-          true;
-        _ -> false
-      end
-  end.
+  Stamp = timestamp(),
+  Res =
+    case mnesia_driver:select_last() of
+      {ok, empty} -> mnesia_driver:add_user(UserId, Stamp);
+      {ok, LastInsert} ->
+        case MaxRPS < (Stamp - LastInsert) of
+          true -> mnesia_driver:add_user(UserId, Stamp);
+          Other -> {false, Other}
+        end;
+      Error -> Error
+    end,
+  check_result(Res).
 
--spec remove_old_limiters(Timeout::integer()) -> Number::integer().
-%% @doc Removes old counters and returns number of deleted counters.
+-spec(check_result(Res::tuple()) -> true | false).
+check_result({atomic, _}) -> true;
+check_result(_) -> false.
+
+-spec remove_old_limiters(Timeout::integer()) -> ok.
 remove_old_limiters(Timeout) ->
   NowStamp = timestamp(),
   mnesia_driver:remove_fields(NowStamp - Timeout).
 
 -spec timestamp() -> Timstamp::integer().
-%% @doc Returns now() as milliseconds
 timestamp() ->
   erlang:convert_time_unit(erlang:system_time(), native, millisecond).
 
@@ -94,8 +91,8 @@ start_link() ->
 %%                     {stop, Reason}
 %% @end
 %%--------------------------------------------------------------------
--spec(init(Args :: term()) ->
-  {ok, State :: #state{}} | {ok, State :: #state{}, timeout() | hibernate} |
+-spec(init(Args :: []) ->
+  {ok, State :: #remove_old{}} | {ok, State :: #remove_old{}, timeout() | hibernate} |
   {stop, Reason :: term()} | ignore).
 init([]) ->
   io:format("~nStarting applcation Token backet~n"),
@@ -105,8 +102,8 @@ init([]) ->
 
   mnesia_driver:start(),
 
-  timer:send_interval(Rate, remove_old),
-  {ok, #raterlimiter{timeout=Timeout, cleanup_rate=Rate}}.
+  {ok, _} = timer:send_interval(Rate, remove_old),
+  {ok, #remove_old{timeout=Timeout, cleanup_rate=Rate}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -156,7 +153,7 @@ handle_cast(_Request, State) ->
   {stop, Reason :: term(), NewState :: #state{}}).
 
 handle_info(remove_old, State)->
-  remove_old_limiters(State#raterlimiter.timeout),
+  remove_old_limiters(State#remove_old.timeout),
   {noreply, State};
 
 handle_info(_Msg, State) ->
