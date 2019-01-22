@@ -26,6 +26,8 @@
 -define(SERVER, ?MODULE).
 
 -define(DEFAULT_RPS, 2000).
+-define(TIMEOUT, 300000).
+-define(RATE, 10000).
 
 -record(remove_old, {cleanup_rate, timeout}).
 -record(state, {number_of_tokens, max_tokens}).
@@ -96,14 +98,10 @@ start_link() ->
   {stop, Reason :: term()} | ignore).
 init([]) ->
   io:format("~nStarting applcation Token backet~n"),
-  Timeout = 300000,
-  Rate = 10000,
-  io:format("~nStarting Token backet with Timeout ~p, Cleanup every ~p milliseconds ~n",[Timeout, Rate]),
-
   mnesia_driver:start(),
-
-  {ok, _} = timer:send_interval(Rate, remove_old),
-  {ok, #remove_old{timeout=Timeout, cleanup_rate=Rate}}.
+  {ok, _} = timer:send_interval(?RATE, remove_old),
+  io:format("~nStarting Token backet with Timeout ~p, Cleanup every ~p milliseconds ~n",[?TIMEOUT, ?RATE]),
+  {ok, #remove_old{timeout=?TIMEOUT, cleanup_rate=?RATE}}.
 
 %%--------------------------------------------------------------------
 %% @private

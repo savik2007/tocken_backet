@@ -24,7 +24,7 @@
 
 -spec(start() -> ok).
 start() ->
-  io:format("~nStarting mnesia backet~n"),
+  io:format("~nStarting mnesia~n"),
   mnesia:start(),
   io:format("~nCreating table token_bucket~n"),
   mnesia:create_table(token_bucket, [{attributes, record_info(fields, token_bucket)}]),
